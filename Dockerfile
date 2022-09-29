@@ -1,7 +1,8 @@
-FROM rust:1.62.1 as builder
+FROM rustlang/rust:nightly as builder
 WORKDIR /usr/src/bb-proxy
 COPY . .
-RUN cargo install --path .
+RUN cargo install --features vendored --path .
+
 
 FROM debian:buster-slim
 RUN apt-get update && rm -rf /var/lib/apt/lists/*
