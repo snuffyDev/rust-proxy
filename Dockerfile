@@ -1,7 +1,7 @@
 FROM rustlang/rust:nightly as builder
 WORKDIR /usr/src/bb-proxy
 COPY . .
-RUN cargo install --features vendored --path .
+RUN cargo install --path .
 
 
 FROM debian:buster-slim
