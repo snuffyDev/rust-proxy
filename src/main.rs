@@ -96,7 +96,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
     // Collect all the URL Search Params into a HashMap
     let query_map = form_urlencoded::parse(query.as_bytes())
         .into_owned()
-        .collect::<HashMap<String, String>>().it;
+        .collect::<HashMap<String, String>>();
 
     // Get the URL Search Param `&host=`
     let host = if let Some(h) = query_map.get("host") {
