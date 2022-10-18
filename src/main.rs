@@ -82,11 +82,10 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
     let mut response = Response::new(Body::empty());
     response.headers_mut().insert(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse::<hyper::http::HeaderValue>().unwrap());
 
-    let path = req.uri().path();
-    // Split the URL Path by "/", and returns each str slice
+    let path = req.uri().path_and_query().unwrap().query().unwrap().// Split the URL Path by "/", and returns each str slice
     let parts: Vec<&str> = path.split("/").collect();
 
-    let query = if let Some(q) = req.uri().path_and_query() {
+    let query = if let Some(q) = req.uri().path_and_query().unwrap().query() {
         q.to_string()
     } else {
         return Ok(Response::builder()
@@ -97,7 +96,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
     // Collect all the URL Search Params into a HashMap
     let query_map = form_urlencoded::parse(query.as_bytes())
         .into_owned()
-        .collect::<HashMap<String, String>>();
+        .collect::<HashMap<String, String>>().it;
 
     // Get the URL Search Param `&host=`
     let host = if let Some(h) = query_map.get("host") {
@@ -109,6 +108,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
             .body("No host parameter provided".into())
             .unwrap());
     };
+    
     // Matches Request Method and the first URL Path section
     match (req.method(), parts[1]) {
         (&Method::GET, "videoplayback") => {
