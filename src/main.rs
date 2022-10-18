@@ -82,7 +82,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
     let mut response = Response::new(Body::empty());
     response.headers_mut().insert(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse::<hyper::http::HeaderValue>().unwrap());
 
-    let path = req.uri().path_and_query().unwrap().query().unwrap().// Split the URL Path by "/", and returns each str slice
+    let path = req.uri().path_and_query().unwrap().query().unwrap(); // Split the URL Path by "/", and returns each str slice
     let parts: Vec<&str> = path.split("/").collect();
 
     let query = if let Some(q) = req.uri().path_and_query().unwrap().query() {
