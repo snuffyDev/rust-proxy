@@ -1,12 +1,12 @@
 # Rust Proxy Server
 
-This audio proxy server for YouTube/YouTube Music is still an early work-in-progress, use with caution!
+This audio proxy server is still an early work-in-progress, use with caution!
 
 > Note: Since this proxy is potentially unstable, a binary is not provided for the time being.
 >
 > In order to use this you must compile it locally!
 
-The server will listen on port 3001.
+The server will listen on port 33125.
 
 ## Features
 
