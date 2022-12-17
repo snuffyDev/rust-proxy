@@ -139,6 +139,11 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
                 ResponseResult::Err(e) => Response::builder().status(500).body(e.into()).unwrap(),
             };
             *response.body_mut() = result.into_body();
+            response.headers_mut().insert(
+                hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                "*".parse::<hyper::http::HeaderValue>().unwrap(),
+            );
+
             Ok(response)
         }
         (&Method::GET, "api") => {
