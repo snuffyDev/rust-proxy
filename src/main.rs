@@ -166,6 +166,10 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
 
             Ok(result_response)
         }
+        (Method::GET, "status") => {
+            *response.status_mut() = StatusCode::OK;
+            Ok(response)
+        }
         _ => {
             *response.status_mut() = StatusCode::NOT_FOUND;
             Ok(response)
@@ -175,7 +179,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let addr: SocketAddr = "127.0.0.1:33125".parse().unwrap();
+    let addr: SocketAddr = "127.0.0.1:3001".parse().unwrap();
 
     let listener = TcpListener::bind(&addr).await?;
 
