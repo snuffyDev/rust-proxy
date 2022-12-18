@@ -21,7 +21,7 @@ pub async fn modify_hls_body(body: &str, host_url: &str) -> Result<String, ()> {
                 format!("{}&{}", &caps[1], &caps[2])
             })
             .to_string();
-        return Ok(body_fix_query.clone());
+        return Ok(body_fix_query.to_string());
     }
-    Ok(body_add_host.clone())
+    Ok(body_add_host.to_string())
 }

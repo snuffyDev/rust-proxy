@@ -4,11 +4,10 @@ use hls::modify_hls_body;
 
 use async_recursion::async_recursion;
 
-use hyper::body::{self, HttpBody};
 use hyper::header::{self};
 use hyper::server::conn::Http;
 use hyper::service::service_fn;
-use hyper::{Body, Error, Request};
+use hyper::{Body, Request};
 use hyper::{Client, Method, Response, StatusCode};
 use hyper_tls::HttpsConnector;
 use std::net::SocketAddr;
@@ -47,10 +46,8 @@ async fn send_request(url: &str, host: &str) -> ResponseResult {
         .pool_max_idle_per_host(0)
         .http1_title_case_headers(true)
         .http1_preserve_header_case(true)
-        .http2_keep_alive_interval(Duration::new(20, 0))
         .http2_keep_alive_timeout(Duration::new(60, 0))
         .build::<_, Body>(https);
-    println!("HOST: {}", &host);
 
     let req = Request::builder()
         .uri(req_url.parse::<hyper::Uri>().expect("Error parsing Uri"))
@@ -69,6 +66,7 @@ async fn send_request(url: &str, host: &str) -> ResponseResult {
         Ok(res) => res,
         Err(e) => return ResponseResult::Err(e.to_string()),
     };
+
     // A https://xxxx-xxxx.googlevideo.com/videoplayback?xxxxx
     // URL should return a 206 or 302 Response code.
     // 302 - "Found" should have a "Location" HTTP header.
@@ -79,6 +77,7 @@ async fn send_request(url: &str, host: &str) -> ResponseResult {
             .expect("Error getting Location")
             .to_str()
             .unwrap();
+
         let redirect = match send_request(&location, &"music.youtube.com").await {
             ResponseResult::Ok(r) => r,
             ResponseResult::Err(e) => return ResponseResult::Err(e.to_string()),
@@ -91,12 +90,13 @@ async fn send_request(url: &str, host: &str) -> ResponseResult {
 
 async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     let mut response = Response::new(Body::empty());
+
     response.headers_mut().insert(
         hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
         "*".parse::<hyper::http::HeaderValue>().unwrap(),
     );
 
-    let path = req.uri().path_and_query().unwrap().query().unwrap(); // Split the URL Path by "/", and returns each str slice
+    let path = &*req.uri().path_and_query().unwrap().path(); // Split the URL Path by "/", and returns each str slice
     let parts: Vec<&str> = path.split("/").collect();
 
     let query = if let Some(q) = req.uri().path_and_query().unwrap().query() {
@@ -107,6 +107,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
             .body("No host parameter provided".into())
             .unwrap());
     };
+
     // Collect all the URL Search Params into a HashMap
     let query_map = form_urlencoded::parse(query.as_bytes())
         .into_owned()
@@ -124,15 +125,9 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
     };
 
     // Matches Request Method and the first URL Path section
-    match (req.method(), parts[1]) {
-        (&Method::GET, "videoplayback") => {
-            let url = format!(
-                "https://{}{}?{}",
-                &host,
-                &path,
-                &req.uri().path_and_query().unwrap().query().unwrap()
-            )
-            .to_string();
+    match (req.method().clone(), parts[1]) {
+        (Method::GET, "videoplayback") => {
+            let url = format!("https://{}{}?{}", &host, &path, &query).to_string();
 
             let result = match send_request(&url, &host).await {
                 ResponseResult::Ok(r) => r,
@@ -146,7 +141,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
 
             Ok(response)
         }
-        (&Method::GET, "api") => {
+        (Method::GET, "api") => {
             let url = format!("https://manifest.googlevideo.com{}", &req.uri().path());
 
             let res = match send_request(&url, &host).await {
@@ -155,7 +150,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
             };
             // Collect the inital Response body into bytes,
             // Then turn it into a string
-            let body = body::to_bytes(res.into_body()).await?;
+            let body = hyper::body::to_bytes(res.into_body()).await?;
             let body_str = String::from_utf8(body.to_vec()).unwrap();
 
             // Modify the HLS Manifest body
@@ -193,12 +188,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let service = service_fn(move |req| handle_request(req));
 
             if let Err(err) = Http::new()
-                .http2_keep_alive_interval(Duration::new(20, 0))
-                .http1_preserve_header_case(true)
+                .http2_keep_alive_timeout(Duration::new(30, 0))
                 .http1_preserve_header_case(true)
                 .http1_half_close(true)
                 .http1_title_case_headers(true)
-                .http2_enable_connect_protocol()
                 .serve_connection(stream, service)
                 .await
             {
