@@ -161,7 +161,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let addr: SocketAddr = "0.0.0.0:3001".parse().unwrap();
+    let addr: SocketAddr = "0.0.0.0:10000".parse().unwrap();
 
     let listener = TcpListener::bind(&addr).await?;
 
