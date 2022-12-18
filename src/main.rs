@@ -1,8 +1,7 @@
 mod hls;
 
-use hls::modify_hls_body;
-
 use async_recursion::async_recursion;
+use hls::body::modify_hls_body;
 
 use hyper::header::{self};
 use hyper::server::conn::Http;
@@ -46,7 +45,7 @@ async fn send_request(url: &str, host: &str) -> ResponseResult {
         .pool_max_idle_per_host(0)
         .http1_title_case_headers(true)
         .http1_preserve_header_case(true)
-        .http2_keep_alive_timeout(Duration::new(60, 0))
+        .http2_keep_alive_timeout(Duration::new(20, 0))
         .build::<_, Body>(https);
 
     let req = Request::builder()
@@ -62,30 +61,15 @@ async fn send_request(url: &str, host: &str) -> ResponseResult {
 
     let res = client.request(request).await;
 
-    let response = match res {
-        Ok(res) => res,
+    match res {
+        Ok(res) => {
+            if let Some(location_header) = res.headers().get(header::LOCATION) {
+                return send_request(&location_header.to_str().unwrap(), host).await;
+            }
+            ResponseResult::Ok(res)
+        }
         Err(e) => return ResponseResult::Err(e.to_string()),
-    };
-
-    // A https://xxxx-xxxx.googlevideo.com/videoplayback?xxxxx
-    // URL should return a 206 or 302 Response code.
-    // 302 - "Found" should have a "Location" HTTP header.
-    if response.headers().contains_key(header::LOCATION) {
-        let location = response
-            .headers()
-            .get(header::LOCATION)
-            .expect("Error getting Location")
-            .to_str()
-            .unwrap();
-
-        let redirect = match send_request(&location, &"music.youtube.com").await {
-            ResponseResult::Ok(r) => r,
-            ResponseResult::Err(e) => return ResponseResult::Err(e.to_string()),
-        };
-        return ResponseResult::Ok(redirect);
-    };
-
-    ResponseResult::Ok(response)
+    }
 }
 
 async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
@@ -99,14 +83,12 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
     let path = &*req.uri().path_and_query().unwrap().path(); // Split the URL Path by "/", and returns each str slice
     let parts: Vec<&str> = path.split("/").collect();
 
-    let query = if let Some(q) = req.uri().path_and_query().unwrap().query() {
-        q.to_string()
-    } else {
-        return Ok(Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body("No host parameter provided".into())
-            .unwrap());
-    };
+    let query = req
+        .uri()
+        .path_and_query()
+        .unwrap()
+        .query()
+        .unwrap_or("host=none");
 
     // Collect all the URL Search Params into a HashMap
     let query_map = form_urlencoded::parse(query.as_bytes())
@@ -114,47 +96,47 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
         .collect::<HashMap<String, String>>();
 
     // Get the URL Search Param `&host=`
-    let host = if let Some(h) = query_map.get("host") {
-        h.as_str()
-    } else {
-        // If `&host=` is not found, return a 400 Bad Request Response
-        return Ok(Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body("No host parameter provided".into())
-            .unwrap());
-    };
+    let host = query_map.get("host").unwrap().as_str();
 
     // Matches Request Method and the first URL Path section
-    match (req.method().clone(), parts[1]) {
-        (Method::GET, "videoplayback") => {
+    match (req.method(), parts[1]) {
+        (&Method::GET, "videoplayback") => {
+            if &host == &"none" {
+                return Ok(response);
+            }
             let url = format!("https://{}{}?{}", &host, &path, &query).to_string();
 
-            let result = match send_request(&url, &host).await {
+            let mut result = match send_request(&url, &host).await {
                 ResponseResult::Ok(r) => r,
                 ResponseResult::Err(e) => Response::builder().status(500).body(e.into()).unwrap(),
             };
-            *response.body_mut() = result.into_body();
-            response.headers_mut().insert(
+
+            result.headers_mut().insert(
                 hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
                 "*".parse::<hyper::http::HeaderValue>().unwrap(),
             );
 
-            Ok(response)
+            Ok(result)
         }
-        (Method::GET, "api") => {
+        (&Method::GET, "api") => {
+            if &host == &"none" {
+                return Ok(response);
+            }
             let url = format!("https://manifest.googlevideo.com{}", &req.uri().path());
 
-            let res = match send_request(&url, &host).await {
+            let result = match send_request(&url, &host).await {
                 ResponseResult::Ok(r) => r,
                 ResponseResult::Err(e) => response,
             };
             // Collect the inital Response body into bytes,
             // Then turn it into a string
-            let body = hyper::body::to_bytes(res.into_body()).await?;
+            let body = hyper::body::to_bytes(result.into_body())
+                .await
+                .unwrap_or_default();
             let body_str = String::from_utf8(body.to_vec()).unwrap();
 
             // Modify the HLS Manifest body
-            let result = modify_hls_body(&body_str, &host)
+            let result = modify_hls_body(body_str, host)
                 .await
                 .expect("Could not modify HLS body.");
 
@@ -166,7 +148,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
 
             Ok(result_response)
         }
-        (Method::GET, "status") => {
+        (&Method::GET, "status") => {
             *response.status_mut() = StatusCode::OK;
             Ok(response)
         }
@@ -179,7 +161,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let addr: SocketAddr = "127.0.0.1:3001".parse().unwrap();
+    let addr: SocketAddr = "0.0.0.0:3001".parse().unwrap();
 
     let listener = TcpListener::bind(&addr).await?;
 
